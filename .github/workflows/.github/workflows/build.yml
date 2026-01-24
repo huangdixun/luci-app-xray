@@ -1,0 +1,73 @@
+name: Build luci-app-xray
+
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_version:
+        description: 'OpenWrt Version'
+        required: true
+        default: '24.10.5'
+        type: choice
+        options:
+          - '24.10.5'
+          - '25.12.0-rc3'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential zstd
+      
+      - name: Set SDK URL
+        id: sdk
+        run: |
+          if [[ "${{ inputs.openwrt_version }}" == "24.10.5" ]]; then
+            echo "url=https://downloads.openwrt.org/releases/24.10.5/targets/rockchip/armv8/openwrt-sdk-24.10.5-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
+            echo "ext=ipk" >> $GITHUB_OUTPUT
+          else
+            echo "url=https://downloads.openwrt.org/releases/25.12.0-rc3/targets/rockchip/armv8/openwrt-sdk-25.12.0-rc3-rockchip-armv8_gcc-14.2.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
+            echo "ext=apk" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Download OpenWrt SDK
+        run: |
+          wget ${{ steps.sdk.outputs.url }}
+          tar --use-compress-program=unzstd -xf openwrt-sdk-*.tar.zst
+      
+      - name: Prepare feeds
+        run: |
+          cd openwrt-sdk-*/
+          echo "src-link luci_app_xray $GITHUB_WORKSPACE" >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+      
+      - name: Configure
+        run: |
+          cd openwrt-sdk-*/
+          echo "CONFIG_PACKAGE_luci-app-xray=m" >> .config
+          make defconfig
+      
+      - name: Build
+        run: |
+          cd openwrt-sdk-*/
+          make package/luci-app-xray/compile V=s -j$(nproc)
+      
+      - name: Collect packages
+        run: |
+          cd openwrt-sdk-*/
+          mkdir -p $GITHUB_WORKSPACE/packages
+          find bin/ -name "*.${{ steps.sdk.outputs.ext }}" -exec cp {} $GITHUB_WORKSPACE/packages/ \;
+          ls -lh $GITHUB_WORKSPACE/packages/
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-xray-${{ inputs.openwrt_version }}
+          path: packages/*.${{ steps.sdk.outputs.ext }}
