@@ -10,7 +10,7 @@ on:
         type: choice
         options:
           - '24.10.5'
-          - 'snapshot'
+          - '25.12.0-rc1'
 
 jobs:
   build:
@@ -32,22 +32,32 @@ jobs:
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
             python3-distutils python3-pyelftools rsync unzip zlib1g-dev file wget zstd
       
-      - name: Set SDK URL
+      - name: Set SDK URL and package extension
         id: sdk
         run: |
           if [[ "${{ inputs.openwrt_version }}" == "24.10.5" ]]; then
             echo "url=https://downloads.openwrt.org/releases/24.10.5/targets/rockchip/armv8/openwrt-sdk-24.10.5-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
             echo "ext=ipk" >> $GITHUB_OUTPUT
           else
-            echo "url=https://downloads.openwrt.org/snapshots/targets/rockchip/armv8/openwrt-sdk-rockchip-armv8_gcc-14.2.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
+            echo "url=https://downloads.openwrt.org/releases/25.12.0-rc1/targets/rockchip/armv8/openwrt-sdk-25.12.0-rc1-rockchip-armv8_gcc-14.2.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
             echo "ext=apk" >> $GITHUB_OUTPUT
           fi
       
       - name: Download OpenWrt SDK
         run: |
           wget ${{ steps.sdk.outputs.url }}
-          tar --use-compress-program=unzstd -xf openwrt-sdk-*.tar.zst
-          mv openwrt-sdk-* openwrt-sdk
+      
+      - name: Extract SDK
+        run: |
+          tar --use-compress-program=unzstd -xf *.tar.zst
+          # 找到解压后的目录并重命名
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" | head -n 1)
+          if [ -n "$SDK_DIR" ]; then
+            mv "$SDK_DIR" openwrt-sdk
+          else
+            echo "Error: SDK directory not found"
+            exit 1
+          fi
       
       - name: Copy source to SDK
         run: |
@@ -75,10 +85,11 @@ jobs:
         run: |
           mkdir -p output
           find openwrt-sdk/bin -type f \( -name "luci-app-xray*.${{ steps.sdk.outputs.ext }}" -o -name "luci-i18n-xray*.${{ steps.sdk.outputs.ext }}" \) -exec cp {} output/ \;
+          echo "Collected packages:"
           ls -lh output/
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ inputs.openwrt_version }}
+          name: luci-app-xray-${{ inputs.openwrt_version }}
           path: output/*
