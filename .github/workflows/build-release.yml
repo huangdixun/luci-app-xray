@@ -10,20 +10,27 @@ on:
         type: choice
         options:
           - '24.10.5'
-          - '25.12.0-rc3'
+          - 'snapshot'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+      
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential zstd
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3-distutils python3-pyelftools rsync unzip zlib1g-dev file wget zstd
       
       - name: Set SDK URL
         id: sdk
@@ -32,7 +39,7 @@ jobs:
             echo "url=https://downloads.openwrt.org/releases/24.10.5/targets/rockchip/armv8/openwrt-sdk-24.10.5-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
             echo "ext=ipk" >> $GITHUB_OUTPUT
           else
-            echo "url=https://downloads.openwrt.org/releases/25.12.0-rc3/targets/rockchip/armv8/openwrt-sdk-25.12.0-rc3-rockchip-armv8_gcc-14.2.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
+            echo "url=https://downloads.openwrt.org/snapshots/targets/rockchip/armv8/openwrt-sdk-rockchip-armv8_gcc-14.2.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
             echo "ext=apk" >> $GITHUB_OUTPUT
           fi
       
@@ -40,34 +47,38 @@ jobs:
         run: |
           wget ${{ steps.sdk.outputs.url }}
           tar --use-compress-program=unzstd -xf openwrt-sdk-*.tar.zst
+          mv openwrt-sdk-* openwrt-sdk
       
-      - name: Prepare feeds
+      - name: Copy source to SDK
         run: |
-          cd openwrt-sdk-*/
-          echo "src-link luci_app_xray $GITHUB_WORKSPACE" >> feeds.conf.default
+          mkdir -p openwrt-sdk/package/luci-app-xray
+          cp -r core geodata status LICENSE README.md openwrt-sdk/package/luci-app-xray/
+      
+      - name: Update feeds
+        run: |
+          cd openwrt-sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
       
       - name: Configure
         run: |
-          cd openwrt-sdk-*/
+          cd openwrt-sdk
           echo "CONFIG_PACKAGE_luci-app-xray=m" >> .config
-          make defconfig
+          make defconfig V=s
       
       - name: Build
         run: |
-          cd openwrt-sdk-*/
-          make package/luci-app-xray/compile V=s -j$(nproc)
+          cd openwrt-sdk
+          make package/luci-app-xray/compile V=s -j$(nproc) || make package/luci-app-xray/compile V=s -j1
       
-      - name: Collect packages
+      - name: Find and collect packages
         run: |
-          cd openwrt-sdk-*/
-          mkdir -p $GITHUB_WORKSPACE/packages
-          find bin/ -name "*.${{ steps.sdk.outputs.ext }}" -exec cp {} $GITHUB_WORKSPACE/packages/ \;
-          ls -lh $GITHUB_WORKSPACE/packages/
+          mkdir -p output
+          find openwrt-sdk/bin -type f \( -name "luci-app-xray*.${{ steps.sdk.outputs.ext }}" -o -name "luci-i18n-xray*.${{ steps.sdk.outputs.ext }}" \) -exec cp {} output/ \;
+          ls -lh output/
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: luci-app-xray-${{ inputs.openwrt_version }}
-          path: packages/*.${{ steps.sdk.outputs.ext }}
+          name: packages-${{ inputs.openwrt_version }}
+          path: output/*
