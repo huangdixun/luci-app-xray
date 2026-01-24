@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: source
+          path: luci-app-xray-src
       
       - name: Free disk space
         run: |
@@ -55,36 +55,38 @@ jobs:
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" | head -n 1)
           if [ -n "$SDK_DIR" ]; then
             mv "$SDK_DIR" openwrt-sdk
-          else
-            echo "Error: SDK directory not found"
-            exit 1
           fi
       
-      - name: Copy source to SDK
+      - name: Add luci-app-xray to feeds
         run: |
-          cp -r source openwrt-sdk/package/luci-app-xray
+          cd openwrt-sdk
+          # 添加本地源码作为 feed
+          echo "src-link luci_app_xray $GITHUB_WORKSPACE/luci-app-xray-src" >> feeds.conf.default
       
-      - name: Update feeds
+      - name: Update and install feeds
         run: |
           cd openwrt-sdk
           ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          ./scripts/feeds install -a -p luci_app_xray
       
       - name: Configure
         run: |
           cd openwrt-sdk
-          echo "CONFIG_PACKAGE_luci-app-xray=m" >> .config
-          make defconfig V=s
+          # 编译所有 xray 相关的包
+          make defconfig
+          ./scripts/feeds install luci-app-xray
       
       - name: Build
         run: |
           cd openwrt-sdk
-          make package/luci-app-xray/compile V=s -j$(nproc) || make package/luci-app-xray/compile V=s -j1
+          make package/feeds/luci_app_xray/core/compile V=s -j$(nproc) || true
+          make package/feeds/luci_app_xray/geodata/compile V=s -j$(nproc) || true
+          make package/feeds/luci_app_xray/status/compile V=s -j$(nproc) || true
       
       - name: Find and collect packages
         run: |
           mkdir -p output
-          find openwrt-sdk/bin -type f \( -name "luci-app-xray*.${{ steps.sdk.outputs.ext }}" -o -name "luci-i18n-xray*.${{ steps.sdk.outputs.ext }}" \) -exec cp {} output/ \;
+          find openwrt-sdk/bin -type f -name "*xray*.${{ steps.sdk.outputs.ext }}" -exec cp {} output/ \;
           echo "Collected packages:"
           ls -lh output/
       
