@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          path: source
       
       - name: Free disk space
         run: |
@@ -58,11 +60,10 @@ jobs:
             exit 1
           fi
       
-      - name: Prepare package directory
+      - name: Copy source to SDK
         run: |
-          # 完整复制整个仓库到 SDK 的 package 目录
-          cp -r $GITHUB_WORKSPACE openwrt-sdk/package/luci-app-xray
-          
+          cp -r source openwrt-sdk/package/luci-app-xray
+      
       - name: Update feeds
         run: |
           cd openwrt-sdk
