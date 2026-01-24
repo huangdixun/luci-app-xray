@@ -10,7 +10,7 @@ on:
         type: choice
         options:
           - '24.10.5'
-          - '25.12.0-rc1'
+          - '25.12.0-rc3'
 
 jobs:
   build:
@@ -39,7 +39,7 @@ jobs:
             echo "url=https://downloads.openwrt.org/releases/24.10.5/targets/rockchip/armv8/openwrt-sdk-24.10.5-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
             echo "ext=ipk" >> $GITHUB_OUTPUT
           else
-            echo "url=https://downloads.openwrt.org/releases/25.12.0-rc1/targets/rockchip/armv8/openwrt-sdk-25.12.0-rc1-rockchip-armv8_gcc-14.2.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
+            echo "url=https://downloads.openwrt.org/releases/25.12.0-rc3/targets/rockchip/armv8/openwrt-sdk-25.12.0-rc3-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst" >> $GITHUB_OUTPUT
             echo "ext=apk" >> $GITHUB_OUTPUT
           fi
       
@@ -50,7 +50,6 @@ jobs:
       - name: Extract SDK
         run: |
           tar --use-compress-program=unzstd -xf *.tar.zst
-          # 找到解压后的目录并重命名
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" | head -n 1)
           if [ -n "$SDK_DIR" ]; then
             mv "$SDK_DIR" openwrt-sdk
@@ -59,11 +58,11 @@ jobs:
             exit 1
           fi
       
-      - name: Copy source to SDK
+      - name: Prepare package directory
         run: |
-          mkdir -p openwrt-sdk/package/luci-app-xray
-          cp -r core geodata status LICENSE README.md openwrt-sdk/package/luci-app-xray/
-      
+          # 完整复制整个仓库到 SDK 的 package 目录
+          cp -r $GITHUB_WORKSPACE openwrt-sdk/package/luci-app-xray
+          
       - name: Update feeds
         run: |
           cd openwrt-sdk
